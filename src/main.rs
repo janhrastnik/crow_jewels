@@ -11,7 +11,9 @@ struct Crow {
     fly_frame_tick_times: Vec<usize>,
     run_frame_tick_times: Vec<usize>,
     idle_frame_tick_counter: usize,
-    is_colliding: IsColliding,
+    is_colliding_vert: IsColliding,
+    is_colliding_hori: IsColliding,
+    score: usize,
 }
 
 const TIME_STEP: f32 = 1.0 / 60.0;
@@ -27,20 +29,25 @@ enum CrowState {
 struct DebugText;
 
 #[derive(Component)]
+struct ScoreText;
+
+#[derive(Component)]
 struct Collider {
     width: f32,
     height: f32,
     collider_type: ColliderType,
 }
 
+#[derive(PartialEq)]
 enum ColliderType {
     Surface,
+    Jewel,
 }
 
 #[derive(Component)]
 struct BirdCamera {}
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 enum IsColliding {
     Top,
     Bottom,
@@ -168,13 +175,59 @@ fn spawn_background(
     commands
         .spawn_bundle(SpriteBundle {
             texture: asset_server.load("brick.png"),
-            transform: Transform::from_xyz(200.0, 0.0, 0.0),
+            transform: Transform::from_xyz(100.0, 10.0, 1.0),
             ..Default::default()
         })
         .insert(Collider {
             width: 32.0,
             height: 32.0,
             collider_type: ColliderType::Surface,
+        });
+
+    commands
+        .spawn_bundle(SpriteBundle {
+            texture: asset_server.load("dirtfloor.png"),
+            sprite: Sprite {
+                custom_size: Some(Vec2::new(300.0, 300.0)),
+                ..Default::default()
+            },
+            transform: Transform::from_xyz(-300.0, -150.0, 1.0),
+            ..Default::default()
+        })
+        .insert(Collider {
+            width: 300.0,
+            height: 300.0,
+            collider_type: ColliderType::Surface,
+        });
+    commands
+        .spawn_bundle(SpriteBundle {
+            texture: asset_server.load("dirtfloor.png"),
+            sprite: Sprite {
+                custom_size: Some(Vec2::new(300.0, 300.0)),
+                ..Default::default()
+            },
+            transform: Transform::from_xyz(0.0, -150.0, 1.0),
+            ..Default::default()
+        })
+        .insert(Collider {
+            width: 300.0,
+            height: 300.0,
+            collider_type: ColliderType::Surface,
+        });
+    commands
+        .spawn_bundle(SpriteBundle {
+            texture: asset_server.load("ring.png"),
+            sprite: Sprite {
+                custom_size: Some(Vec2::new(64.0, 64.0)),
+                ..Default::default()
+            },
+            transform: Transform::from_xyz(-150.0, 20.0, 1.0),
+            ..Default::default()
+        })
+        .insert(Collider {
+            width: 64.0,
+            height: 64.0,
+            collider_type: ColliderType::Jewel,
         });
 
     // spawn the crow
@@ -192,7 +245,9 @@ fn spawn_background(
             fly_frame_tick_times: vec![1, 1, 1, 1, 1, 1, 1, 1, 1],
             run_frame_tick_times: vec![1, 1, 1, 1, 1, 1, 1, 1, 1],
             idle_frame_tick_counter: 0,
-            is_colliding: IsColliding::No,
+            is_colliding_vert: IsColliding::No,
+            is_colliding_hori: IsColliding::No,
+            score: 0,
         });
 
     let font = asset_server.load("Inconsolata-Regular.ttf");
@@ -214,7 +269,36 @@ fn spawn_background(
                 ..Default::default()
             },
             text: Text::with_section(
-                "a".to_string(),
+                "Score".to_string(),
+                TextStyle {
+                    font: font.clone(),
+                    font_size: 50.0,
+                    color: Color::WHITE,
+                },
+                Default::default(),
+            ),
+            ..Default::default()
+        })
+        .insert(DebugText);
+
+    commands
+        .spawn_bundle(TextBundle {
+            style: Style {
+                align_self: AlignSelf::FlexEnd,
+                position_type: PositionType::Absolute,
+                position: Rect {
+                    top: Val::Px(5.0),
+                    left: Val::Px(15.0),
+                    ..Default::default()
+                },
+                size: Size {
+                    width: Val::Px(200.0),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            text: Text::with_section(
+                "Score: 0".to_string(),
                 TextStyle {
                     font,
                     font_size: 50.0,
@@ -224,7 +308,7 @@ fn spawn_background(
             ),
             ..Default::default()
         })
-        .insert(DebugText);
+        .insert(ScoreText);
 }
 
 fn crow_input(
@@ -245,10 +329,10 @@ fn crow_input(
     let (mut camera_transform, mut camera) = camera_query.single_mut();
     let (mut background_transform, mut background, _) = background_query.single_mut();
     let (mut crow, mut transform, _, _, mut crow_handle, mut sprite) = crow_query.single_mut();
-    if crow.is_colliding != IsColliding::Bottom {
+    if crow.is_colliding_vert != IsColliding::Bottom {
         transform.translation.y += 1.0 * crow.acceleration * time.delta_seconds();
     } else {
-        if crow.crow_state != CrowState::Idle {
+        if crow.crow_state == CrowState::Fly {
             crow.crow_state = CrowState::Idle;
             *crow_handle = sprites.crow_idle.clone();
             sprite.index = 0;
@@ -258,16 +342,14 @@ fn crow_input(
 
     if keyboard_input.pressed(KeyCode::Space) {
         crow.acceleration = 200.0;
-        if transform.translation.y == 0.0 {
-            transform.translation.y = 1.0;
-        }
+        transform.translation.y += 10.0;
         if crow.crow_state != CrowState::Fly {
             crow.crow_state = CrowState::Fly;
             sprite.index = 0;
             *crow_handle = sprites.crow_fly.clone();
         }
     }
-    if keyboard_input.pressed(KeyCode::Left) && crow.is_colliding != IsColliding::Left {
+    if keyboard_input.pressed(KeyCode::Left) && crow.is_colliding_hori != IsColliding::Left {
         transform.translation.x += -200.0 * time.delta_seconds();
         sprite.flip_x = true;
         if crow.crow_state == CrowState::Idle {
@@ -275,7 +357,9 @@ fn crow_input(
             sprite.index = 0;
             *crow_handle = sprites.crow_run.clone();
         }
-    } else if keyboard_input.pressed(KeyCode::Right) && crow.is_colliding != IsColliding::Right {
+    } else if keyboard_input.pressed(KeyCode::Right) && crow.is_colliding_hori != IsColliding::Right
+    {
+        println!("this runs");
         transform.translation.x += 200.0 * time.delta_seconds();
         sprite.flip_x = false;
         if crow.crow_state == CrowState::Idle {
@@ -284,19 +368,13 @@ fn crow_input(
             *crow_handle = sprites.crow_run.clone();
         }
     } else {
-        if transform.translation.y <= 0.0 {
-            if crow.crow_state != CrowState::Idle {
-                crow.crow_state = CrowState::Idle;
-                *crow_handle = sprites.crow_idle.clone();
-                sprite.index = 0;
-            }
-            crow.acceleration = 0.0;
-            transform.translation.y = 0.0;
+        if crow.crow_state != CrowState::Fly {
+            crow.crow_state = CrowState::Idle;
+            *crow_handle = sprites.crow_idle.clone();
         }
     }
-    if transform.translation.y > 0.0 {
-        crow.acceleration -= 5.0;
-    }
+    crow.acceleration -= 5.0;
+
     camera_transform.translation = transform.translation;
     background_transform.translation =
         Vec3::new(transform.translation.x, transform.translation.y, 0.0);
@@ -305,28 +383,38 @@ fn crow_input(
 fn collision_check(
     mut commands: Commands,
     mut crow_query: Query<(&mut Crow, &Transform)>,
-    collider_query: Query<(&Collider, &Transform)>,
+    collider_query: Query<(Entity, &Collider, &Transform)>,
 ) {
     let (mut crow, crow_transform) = crow_query.single_mut();
-    for (collider, collider_transform) in collider_query.iter() {
+    let mut found_collision = false;
+    for (entity, collider, collider_transform) in collider_query.iter() {
         let collision = collide(
             collider_transform.translation,
-            Vec2::new(32.0, 32.0),
+            Vec2::new(collider.width, collider.height),
             crow_transform.translation,
             Vec2::new(60.0, 60.0),
         );
 
         if let Some(collision) = collision {
             println!("collision!");
+            found_collision = true;
+
+            if collider.collider_type == ColliderType::Jewel {
+                crow.score += 1;
+                commands.entity(entity).despawn();
+            }
 
             match collision {
-                Collision::Left => crow.is_colliding = IsColliding::Left,
-                Collision::Right => crow.is_colliding = IsColliding::Right,
-                Collision::Top => crow.is_colliding = IsColliding::Top,
-                Collision::Bottom => crow.is_colliding = IsColliding::Bottom,
-            }
+                Collision::Left => crow.is_colliding_hori = IsColliding::Left,
+                Collision::Right => crow.is_colliding_hori = IsColliding::Right,
+                Collision::Top => crow.is_colliding_vert = IsColliding::Top,
+                Collision::Bottom => crow.is_colliding_vert = IsColliding::Bottom,
+            };
         } else {
-            crow.is_colliding = IsColliding::No
+            if !found_collision {
+                crow.is_colliding_hori = IsColliding::No;
+                crow.is_colliding_vert = IsColliding::No;
+            }
         }
     }
 }
@@ -334,9 +422,12 @@ fn collision_check(
 fn ui(
     diagnostics: Res<Diagnostics>,
     mut query: Query<&mut Text, With<DebugText>>,
-    mut crow_query: Query<&Transform, With<Crow>>,
+    mut score_query: Query<(&mut Text, With<ScoreText>, Without<DebugText>)>,
+    mut crow_query: Query<(&Transform, &Crow)>,
 ) {
-    let transform = crow_query.single_mut();
+    let (transform, crow) = crow_query.single_mut();
+    let (mut score, _, _) = score_query.single_mut();
+    score.sections[0].value = format!("Score: {}", crow.score);
     for mut text in query.iter_mut() {
         text.sections[0].value = format!("{}", transform.scale);
     }

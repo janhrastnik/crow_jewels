@@ -1,7 +1,7 @@
 use bevy::core::FixedTimestep;
-use bevy::diagnostic::{Diagnostics, FrameTimeDiagnosticsPlugin};
 use bevy::prelude::*;
 use bevy::sprite::collide_aabb::{collide, Collision};
+use std::process;
 
 #[derive(Component)]
 struct Crow {
@@ -17,7 +17,9 @@ struct Crow {
 }
 
 #[derive(Component)]
-struct Person {}
+struct Person {
+    frame_index: usize,
+}
 
 const TIME_STEP: f32 = 1.0 / 60.0;
 
@@ -72,6 +74,8 @@ struct Sprites {
     crow_idle: Handle<TextureAtlas>,
     crow_run: Handle<TextureAtlas>,
     crow_fly: Handle<TextureAtlas>,
+    crow_takeoff: Handle<TextureAtlas>,
+    crow_pickup: Handle<TextureAtlas>,
 }
 
 fn main() {
@@ -92,9 +96,30 @@ fn main() {
                 .with_system(crow_input)
                 .with_system(animate_crow)
                 .with_system(collision_check)
-                .with_system(move_people),
+                .with_system(move_people)
+                .with_system(animate_people),
         )
         .run();
+}
+
+fn animate_people(
+    time: Res<Time>,
+    texture_atlases: Res<Assets<TextureAtlas>>,
+    mut people_query: Query<(
+        &mut Person,
+        &mut AnimationTimer,
+        &mut TextureAtlasSprite,
+        &Handle<TextureAtlas>,
+    )>,
+) {
+    for (mut person, mut timer, mut sprite, texture_atlas_handle) in people_query.iter_mut() {
+        timer.0.tick(time.delta());
+        if timer.0.just_finished() {
+            let texture_atlas = texture_atlases.get(texture_atlas_handle).unwrap();
+            sprite.index = (sprite.index + 1) % texture_atlas.textures.len();
+            person.frame_index = 0;
+        }
+    }
 }
 
 fn animate_crow(
@@ -168,10 +193,24 @@ fn spawn_background(
     let run_atlas = TextureAtlas::from_grid(run_handle, Vec2::new(96.0, 96.0), 7, 1);
     let crow_run_handle = texture_atlases.add(run_atlas);
 
+    let takeoff_handle = asset_server.load("crow_takeoff.png");
+    let takeoff_atlas = TextureAtlas::from_grid(takeoff_handle, Vec2::new(67.0, 67.0), 6, 1);
+    let crow_takeoff_handle = texture_atlases.add(takeoff_atlas);
+
+    let pickup_handle = asset_server.load("crow_pickup.png");
+    let pickup_atlas = TextureAtlas::from_grid(pickup_handle, Vec2::new(67.0, 67.0), 2, 1);
+    let crow_pickup_handle = texture_atlases.add(pickup_atlas);
+
+    let person_handle = asset_server.load("walking_stickman.png");
+    let person_atlas = TextureAtlas::from_grid(person_handle, Vec2::new(80.0, 80.0), 4, 1);
+    let person_handle = texture_atlases.add(person_atlas);
+
     let sprites = Sprites {
         crow_idle: crow_idle_handle.clone(),
         crow_run: crow_run_handle,
         crow_fly: crow_fly_handle,
+        crow_takeoff: crow_takeoff_handle,
+        crow_pickup: crow_pickup_handle,
     };
 
     commands.insert_resource(sprites);
@@ -252,12 +291,8 @@ fn spawn_background(
 
     // spawn people
     commands
-        .spawn_bundle(SpriteBundle {
-            texture: asset_server.load("brick.png"),
-            sprite: Sprite {
-                custom_size: Some(Vec2::new(64.0, 64.0)),
-                ..Default::default()
-            },
+        .spawn_bundle(SpriteSheetBundle {
+            texture_atlas: person_handle,
             transform: Transform::from_xyz(-250.0, 20.0, 1.0),
             ..Default::default()
         })
@@ -266,7 +301,8 @@ fn spawn_background(
             height: 64.0,
             collider_type: ColliderType::Person,
         })
-        .insert(Person {});
+        .insert(Person { frame_index: 0 })
+        .insert(AnimationTimer(Timer::from_seconds(0.1, true)));
 
     // spawn the crow
     commands
@@ -451,14 +487,16 @@ fn crow_input(
 
 fn move_people(
     time: Res<Time>,
-    mut people_query: Query<(&Person, &mut Transform)>,
+    mut people_query: Query<(&Person, &mut Transform, &mut TextureAtlasSprite)>,
     mut crow_query: Query<(&Crow, &Transform, Without<Person>)>,
 ) {
     let (crow, crow_transform, _) = crow_query.single_mut();
-    for (mut person, mut person_transform) in people_query.iter_mut() {
+    for (mut person, mut person_transform, mut sprite) in people_query.iter_mut() {
         if crow_transform.translation.x > person_transform.translation.x {
+            sprite.flip_x = false;
             person_transform.translation.x += 20.0 * time.delta_seconds();
         } else {
+            sprite.flip_x = true;
             person_transform.translation.x -= 20.0 * time.delta_seconds();
         }
     }
@@ -504,7 +542,6 @@ fn collision_check(
 }
 
 fn ui(
-    diagnostics: Res<Diagnostics>,
     mut query: Query<&mut Text, With<DebugText>>,
     mut score_query: Query<(&mut Text, With<ScoreText>, Without<DebugText>)>,
     mut crow_query: Query<(&Transform, &Crow)>,

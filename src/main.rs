@@ -2,7 +2,6 @@ use bevy::core::FixedTimestep;
 use bevy::prelude::*;
 use bevy::sprite::collide_aabb::{collide, Collision};
 use rand::Rng;
-use std::process;
 
 #[derive(Component)]
 struct Crow {
@@ -76,9 +75,7 @@ struct Sprites {
     // sprites that are meant to be reused
     crow_idle: Handle<TextureAtlas>,
     crow_run: Handle<TextureAtlas>,
-    crow_fly: Handle<TextureAtlas>,
     crow_takeoff: Handle<TextureAtlas>,
-    crow_pickup: Handle<TextureAtlas>,
 }
 
 fn main() {
@@ -212,10 +209,6 @@ fn spawn_background(
     let idle_atlas = TextureAtlas::from_grid(idle_handle, Vec2::new(96.0, 96.0), 11, 1);
     let crow_idle_handle = texture_atlases.add(idle_atlas);
 
-    let fly_handle = asset_server.load("crowfly.png");
-    let fly_atlas = TextureAtlas::from_grid(fly_handle, Vec2::new(96.0, 96.0), 7, 1);
-    let crow_fly_handle = texture_atlases.add(fly_atlas);
-
     let run_handle = asset_server.load("crowrun.png");
     let run_atlas = TextureAtlas::from_grid(run_handle, Vec2::new(96.0, 96.0), 7, 1);
     let crow_run_handle = texture_atlases.add(run_atlas);
@@ -224,10 +217,6 @@ fn spawn_background(
     let takeoff_atlas = TextureAtlas::from_grid(takeoff_handle, Vec2::new(67.0, 67.0), 6, 1);
     let crow_takeoff_handle = texture_atlases.add(takeoff_atlas);
 
-    let pickup_handle = asset_server.load("crow_pickup.png");
-    let pickup_atlas = TextureAtlas::from_grid(pickup_handle, Vec2::new(67.0, 67.0), 2, 1);
-    let crow_pickup_handle = texture_atlases.add(pickup_atlas);
-
     let person_handle = asset_server.load("walking_stickman.png");
     let person_atlas = TextureAtlas::from_grid(person_handle, Vec2::new(80.0, 80.0), 4, 1);
     let person_handle = texture_atlases.add(person_atlas);
@@ -235,9 +224,7 @@ fn spawn_background(
     let sprites = Sprites {
         crow_idle: crow_idle_handle.clone(),
         crow_run: crow_run_handle,
-        crow_fly: crow_fly_handle,
         crow_takeoff: crow_takeoff_handle,
-        crow_pickup: crow_pickup_handle,
     };
 
     commands.insert_resource(sprites);
@@ -490,6 +477,7 @@ fn spawn_background(
         .insert(ScoreText);
 }
 
+#[allow(clippy::type_complexity)]
 fn crow_input(
     time: Res<Time>,
     sprites: Res<Sprites>,
@@ -505,8 +493,8 @@ fn crow_input(
         &mut TextureAtlasSprite,
     )>,
 ) {
-    let (mut camera_transform, mut camera) = camera_query.single_mut();
-    let (mut background_transform, mut background, _) = background_query.single_mut();
+    let (mut camera_transform, _) = camera_query.single_mut();
+    let (mut background_transform, _, _) = background_query.single_mut();
     let (mut crow, mut transform, _, _, mut crow_handle, mut sprite) = crow_query.single_mut();
     if crow.is_colliding_vert != IsColliding::Bottom {
         transform.translation.y += 1.0 * crow.acceleration * time.delta_seconds();
@@ -543,7 +531,6 @@ fn crow_input(
         && crow.is_colliding_hori != IsColliding::Right
         && transform.translation.x < 1500.0
     {
-        println!("this runs");
         transform.translation.x += 200.0 * time.delta_seconds();
         sprite.flip_x = false;
         if crow.crow_state == CrowState::Idle {
@@ -551,12 +538,11 @@ fn crow_input(
             sprite.index = 0;
             *crow_handle = sprites.crow_run.clone();
         }
-    } else {
-        if crow.crow_state != CrowState::Fly {
-            crow.crow_state = CrowState::Idle;
-            *crow_handle = sprites.crow_idle.clone();
-        }
+    } else if crow.crow_state != CrowState::Fly {
+        crow.crow_state = CrowState::Idle;
+        *crow_handle = sprites.crow_idle.clone();
     }
+
     crow.acceleration -= 5.0;
 
     camera_transform.translation = transform.translation;
@@ -569,8 +555,8 @@ fn move_people(
     mut people_query: Query<(&Person, &mut Transform, &mut TextureAtlasSprite)>,
     mut crow_query: Query<(&Crow, &Transform, Without<Person>)>,
 ) {
-    let (crow, crow_transform, _) = crow_query.single_mut();
-    for (mut person, mut person_transform, mut sprite) in people_query.iter_mut() {
+    let (_, crow_transform, _) = crow_query.single_mut();
+    for (_, mut person_transform, mut sprite) in people_query.iter_mut() {
         if crow_transform.translation.x > person_transform.translation.x {
             sprite.flip_x = false;
             person_transform.translation.x += 20.0 * time.delta_seconds();
@@ -597,14 +583,12 @@ fn collision_check(
         );
 
         if let Some(collision) = collision {
-            println!("collision!");
             found_collision = true;
 
             if collider.collider_type == ColliderType::Jewel {
                 crow.score += 1;
                 commands.entity(entity).despawn();
             } else if collider.collider_type == ColliderType::Person {
-                println!("You lose. Avoid the people!");
                 std::process::exit(0);
             }
 
@@ -614,11 +598,9 @@ fn collision_check(
                 Collision::Top => crow.is_colliding_vert = IsColliding::Top,
                 Collision::Bottom => crow.is_colliding_vert = IsColliding::Bottom,
             };
-        } else {
-            if !found_collision {
-                crow.is_colliding_hori = IsColliding::No;
-                crow.is_colliding_vert = IsColliding::No;
-            }
+        } else if !found_collision {
+            crow.is_colliding_hori = IsColliding::No;
+            crow.is_colliding_vert = IsColliding::No;
         }
     }
 }

@@ -1137,6 +1137,7 @@ name = "crow_jewels"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "rand",
 ]
 
 [[package]]

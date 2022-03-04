@@ -1,6 +1,7 @@
 use bevy::core::FixedTimestep;
 use bevy::prelude::*;
 use bevy::sprite::collide_aabb::{collide, Collision};
+use rand::Rng;
 use std::process;
 
 #[derive(Component)]
@@ -22,6 +23,8 @@ struct Person {
 }
 
 const TIME_STEP: f32 = 1.0 / 60.0;
+
+const SPAWN_STEP: f32 = 5.0;
 
 #[derive(PartialEq)]
 enum CrowState {
@@ -99,6 +102,11 @@ fn main() {
                 .with_system(move_people)
                 .with_system(animate_people),
         )
+        .add_system_set(
+            SystemSet::new()
+                .with_run_criteria(FixedTimestep::step(SPAWN_STEP as f64))
+                .with_system(spawn_jewel),
+        )
         .run();
 }
 
@@ -161,6 +169,25 @@ fn animate_crow(
             }
         }
     }
+}
+
+fn spawn_jewel(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let num: f32 = rand::thread_rng().gen_range(-1500..1500) as f32;
+    commands
+        .spawn_bundle(SpriteBundle {
+            texture: asset_server.load("ring.png"),
+            sprite: Sprite {
+                custom_size: Some(Vec2::new(64.0, 64.0)),
+                ..Default::default()
+            },
+            transform: Transform::from_xyz(num, 20.0, 1.0),
+            ..Default::default()
+        })
+        .insert(Collider {
+            width: 64.0,
+            height: 64.0,
+            collider_type: ColliderType::Jewel,
+        });
 }
 
 fn spawn_background(
@@ -292,8 +319,8 @@ fn spawn_background(
     // spawn people
     commands
         .spawn_bundle(SpriteSheetBundle {
-            texture_atlas: person_handle,
-            transform: Transform::from_xyz(-250.0, 20.0, 1.0),
+            texture_atlas: person_handle.clone(),
+            transform: Transform::from_xyz(750.0, 20.0, 1.0),
             ..Default::default()
         })
         .insert(Collider {
@@ -304,6 +331,58 @@ fn spawn_background(
         .insert(Person { frame_index: 0 })
         .insert(AnimationTimer(Timer::from_seconds(0.1, true)));
 
+    commands
+        .spawn_bundle(SpriteSheetBundle {
+            texture_atlas: person_handle.clone(),
+            transform: Transform::from_xyz(-250.0, 20.0, 1.0),
+            ..Default::default()
+        })
+        .insert(Collider {
+            width: 64.0,
+            height: 64.0,
+            collider_type: ColliderType::Person,
+        })
+        .insert(Person { frame_index: 0 })
+        .insert(AnimationTimer(Timer::from_seconds(0.1, true)));
+    commands
+        .spawn_bundle(SpriteSheetBundle {
+            texture_atlas: person_handle.clone(),
+            transform: Transform::from_xyz(1250.0, 20.0, 1.0),
+            ..Default::default()
+        })
+        .insert(Collider {
+            width: 64.0,
+            height: 64.0,
+            collider_type: ColliderType::Person,
+        })
+        .insert(Person { frame_index: 0 })
+        .insert(AnimationTimer(Timer::from_seconds(0.1, true)));
+    commands
+        .spawn_bundle(SpriteSheetBundle {
+            texture_atlas: person_handle.clone(),
+            transform: Transform::from_xyz(250.0, 20.0, 1.0),
+            ..Default::default()
+        })
+        .insert(Collider {
+            width: 64.0,
+            height: 64.0,
+            collider_type: ColliderType::Person,
+        })
+        .insert(Person { frame_index: 0 })
+        .insert(AnimationTimer(Timer::from_seconds(0.1, true)));
+    commands
+        .spawn_bundle(SpriteSheetBundle {
+            texture_atlas: person_handle,
+            transform: Transform::from_xyz(-1250.0, 20.0, 1.0),
+            ..Default::default()
+        })
+        .insert(Collider {
+            width: 64.0,
+            height: 64.0,
+            collider_type: ColliderType::Person,
+        })
+        .insert(Person { frame_index: 0 })
+        .insert(AnimationTimer(Timer::from_seconds(0.1, true)));
     // spawn the crow
     commands
         .spawn_bundle(SpriteSheetBundle {
@@ -316,7 +395,7 @@ fn spawn_background(
             crow_state: CrowState::Idle,
             acceleration: 0.0,
             idle_frame_tick_times: vec![10, 1, 1, 1, 1, 1, 1, 1, 2, 10, 10],
-            fly_frame_tick_times: vec![1, 1, 1, 1, 1, 1, 1, 1, 1],
+            fly_frame_tick_times: vec![1, 1, 1, 1, 1, 1],
             run_frame_tick_times: vec![1, 1, 1, 1, 1, 1, 1, 1, 1],
             idle_frame_tick_counter: 0,
             is_colliding_vert: IsColliding::No,
@@ -446,7 +525,7 @@ fn crow_input(
         if crow.crow_state != CrowState::Fly {
             crow.crow_state = CrowState::Fly;
             sprite.index = 0;
-            *crow_handle = sprites.crow_fly.clone();
+            *crow_handle = sprites.crow_takeoff.clone();
         }
     }
     if keyboard_input.pressed(KeyCode::Left)
@@ -524,6 +603,9 @@ fn collision_check(
             if collider.collider_type == ColliderType::Jewel {
                 crow.score += 1;
                 commands.entity(entity).despawn();
+            } else if collider.collider_type == ColliderType::Person {
+                println!("You lose. Avoid the people!");
+                std::process::exit(0);
             }
 
             match collision {

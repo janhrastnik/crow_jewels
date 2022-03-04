@@ -16,6 +16,9 @@ struct Crow {
     score: usize,
 }
 
+#[derive(Component)]
+struct Person {}
+
 const TIME_STEP: f32 = 1.0 / 60.0;
 
 #[derive(PartialEq)]
@@ -42,6 +45,7 @@ struct Collider {
 enum ColliderType {
     Surface,
     Jewel,
+    Person,
 }
 
 #[derive(Component)]
@@ -87,7 +91,8 @@ fn main() {
                 .with_run_criteria(FixedTimestep::step(TIME_STEP as f64))
                 .with_system(crow_input)
                 .with_system(animate_crow)
-                .with_system(collision_check),
+                .with_system(collision_check)
+                .with_system(move_people),
         )
         .run();
 }
@@ -188,30 +193,45 @@ fn spawn_background(
         .spawn_bundle(SpriteBundle {
             texture: asset_server.load("dirtfloor.png"),
             sprite: Sprite {
-                custom_size: Some(Vec2::new(300.0, 300.0)),
+                custom_size: Some(Vec2::new(1000.0, 1000.0)),
                 ..Default::default()
             },
-            transform: Transform::from_xyz(-300.0, -150.0, 1.0),
+            transform: Transform::from_xyz(-1000.0, -500.0, 1.0),
             ..Default::default()
         })
         .insert(Collider {
-            width: 300.0,
-            height: 300.0,
+            width: 1000.0,
+            height: 1000.0,
             collider_type: ColliderType::Surface,
         });
     commands
         .spawn_bundle(SpriteBundle {
             texture: asset_server.load("dirtfloor.png"),
             sprite: Sprite {
-                custom_size: Some(Vec2::new(300.0, 300.0)),
+                custom_size: Some(Vec2::new(1000.0, 1000.0)),
                 ..Default::default()
             },
-            transform: Transform::from_xyz(0.0, -150.0, 1.0),
+            transform: Transform::from_xyz(0.0, -500.0, 1.0),
             ..Default::default()
         })
         .insert(Collider {
-            width: 300.0,
-            height: 300.0,
+            width: 1000.0,
+            height: 1000.0,
+            collider_type: ColliderType::Surface,
+        });
+    commands
+        .spawn_bundle(SpriteBundle {
+            texture: asset_server.load("dirtfloor.png"),
+            sprite: Sprite {
+                custom_size: Some(Vec2::new(1000.0, 1000.0)),
+                ..Default::default()
+            },
+            transform: Transform::from_xyz(1000.0, -500.0, 1.0),
+            ..Default::default()
+        })
+        .insert(Collider {
+            width: 1000.0,
+            height: 1000.0,
             collider_type: ColliderType::Surface,
         });
     commands
@@ -229,6 +249,24 @@ fn spawn_background(
             height: 64.0,
             collider_type: ColliderType::Jewel,
         });
+
+    // spawn people
+    commands
+        .spawn_bundle(SpriteBundle {
+            texture: asset_server.load("brick.png"),
+            sprite: Sprite {
+                custom_size: Some(Vec2::new(64.0, 64.0)),
+                ..Default::default()
+            },
+            transform: Transform::from_xyz(-250.0, 20.0, 1.0),
+            ..Default::default()
+        })
+        .insert(Collider {
+            width: 64.0,
+            height: 64.0,
+            collider_type: ColliderType::Person,
+        })
+        .insert(Person {});
 
     // spawn the crow
     commands
@@ -281,6 +319,32 @@ fn spawn_background(
         })
         .insert(DebugText);
 
+    commands.spawn_bundle(TextBundle {
+        style: Style {
+            align_self: AlignSelf::FlexEnd,
+            position_type: PositionType::Absolute,
+            position: Rect {
+                top: Val::Px(5.0),
+                right: Val::Px(15.0),
+                ..Default::default()
+            },
+            size: Size {
+                width: Val::Px(200.0),
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+        text: Text::with_section(
+            "Steal the jewelry!".to_string(),
+            TextStyle {
+                font: font.clone(),
+                font_size: 50.0,
+                color: Color::WHITE,
+            },
+            Default::default(),
+        ),
+        ..Default::default()
+    });
     commands
         .spawn_bundle(TextBundle {
             style: Style {
@@ -349,7 +413,10 @@ fn crow_input(
             *crow_handle = sprites.crow_fly.clone();
         }
     }
-    if keyboard_input.pressed(KeyCode::Left) && crow.is_colliding_hori != IsColliding::Left {
+    if keyboard_input.pressed(KeyCode::Left)
+        && crow.is_colliding_hori != IsColliding::Left
+        && transform.translation.x > -1500.0
+    {
         transform.translation.x += -200.0 * time.delta_seconds();
         sprite.flip_x = true;
         if crow.crow_state == CrowState::Idle {
@@ -357,7 +424,9 @@ fn crow_input(
             sprite.index = 0;
             *crow_handle = sprites.crow_run.clone();
         }
-    } else if keyboard_input.pressed(KeyCode::Right) && crow.is_colliding_hori != IsColliding::Right
+    } else if keyboard_input.pressed(KeyCode::Right)
+        && crow.is_colliding_hori != IsColliding::Right
+        && transform.translation.x < 1500.0
     {
         println!("this runs");
         transform.translation.x += 200.0 * time.delta_seconds();
@@ -378,6 +447,21 @@ fn crow_input(
     camera_transform.translation = transform.translation;
     background_transform.translation =
         Vec3::new(transform.translation.x, transform.translation.y, 0.0);
+}
+
+fn move_people(
+    time: Res<Time>,
+    mut people_query: Query<(&Person, &mut Transform)>,
+    mut crow_query: Query<(&Crow, &Transform, Without<Person>)>,
+) {
+    let (crow, crow_transform, _) = crow_query.single_mut();
+    for (mut person, mut person_transform) in people_query.iter_mut() {
+        if crow_transform.translation.x > person_transform.translation.x {
+            person_transform.translation.x += 20.0 * time.delta_seconds();
+        } else {
+            person_transform.translation.x -= 20.0 * time.delta_seconds();
+        }
+    }
 }
 
 fn collision_check(

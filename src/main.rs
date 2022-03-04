@@ -1,4 +1,7 @@
+use bevy::core::FixedTimestep;
+use bevy::diagnostic::{Diagnostics, FrameTimeDiagnosticsPlugin};
 use bevy::prelude::*;
+use bevy::sprite::collide_aabb::{collide, Collision};
 
 #[derive(Component)]
 struct Crow {
@@ -8,7 +11,10 @@ struct Crow {
     fly_frame_tick_times: Vec<usize>,
     run_frame_tick_times: Vec<usize>,
     idle_frame_tick_counter: usize,
+    is_colliding: IsColliding,
 }
+
+const TIME_STEP: f32 = 1.0 / 60.0;
 
 #[derive(PartialEq)]
 enum CrowState {
@@ -18,7 +24,36 @@ enum CrowState {
 }
 
 #[derive(Component)]
+struct DebugText;
+
+#[derive(Component)]
+struct Collider {
+    width: f32,
+    height: f32,
+    collider_type: ColliderType,
+}
+
+enum ColliderType {
+    Surface,
+}
+
+#[derive(Component)]
+struct BirdCamera {}
+
+#[derive(PartialEq)]
+enum IsColliding {
+    Top,
+    Bottom,
+    Left,
+    Right,
+    No,
+}
+
+#[derive(Component)]
 struct AnimationTimer(Timer);
+
+#[derive(Component)]
+struct Background();
 
 #[derive(Default)]
 struct Sprites {
@@ -30,49 +65,61 @@ struct Sprites {
 
 fn main() {
     App::new()
+        .insert_resource(WindowDescriptor {
+            title: "Crow Jewels".to_string(),
+            width: 400.,
+            height: 400.,
+            mode: bevy::window::WindowMode::Windowed,
+            ..Default::default()
+        })
         .add_plugins(DefaultPlugins)
         .add_startup_system(spawn_background)
-        .add_system(crow_input)
-        .add_system(animate_crow)
+        .add_system(ui)
+        .add_system_set(
+            SystemSet::new()
+                .with_run_criteria(FixedTimestep::step(TIME_STEP as f64))
+                .with_system(crow_input)
+                .with_system(animate_crow)
+                .with_system(collision_check),
+        )
         .run();
 }
 
 fn animate_crow(
     time: Res<Time>,
     texture_atlases: Res<Assets<TextureAtlas>>,
-    mut query: Query<(
+    mut crow_query: Query<(
         &mut Crow,
         &mut AnimationTimer,
         &mut TextureAtlasSprite,
         &Handle<TextureAtlas>,
     )>,
 ) {
-    for (mut crow, mut timer, mut sprite, texture_atlas_handle) in query.iter_mut() {
-        timer.0.tick(time.delta());
-        if timer.0.just_finished() {
-            crow.idle_frame_tick_counter += 1;
-            match crow.crow_state {
-                CrowState::Idle => {
-                    if crow.idle_frame_tick_counter > crow.idle_frame_tick_times[sprite.index] {
-                        let texture_atlas = texture_atlases.get(texture_atlas_handle).unwrap();
-                        sprite.index = (sprite.index + 1) % texture_atlas.textures.len();
-                        crow.idle_frame_tick_counter = 0;
-                    }
+    let (mut crow, mut timer, mut sprite, texture_atlas_handle) = crow_query.single_mut();
+    timer.0.tick(time.delta());
+    if timer.0.just_finished() {
+        crow.idle_frame_tick_counter += 1;
+        match crow.crow_state {
+            CrowState::Idle => {
+                if crow.idle_frame_tick_counter > crow.idle_frame_tick_times[sprite.index] {
+                    let texture_atlas = texture_atlases.get(texture_atlas_handle).unwrap();
+                    sprite.index = (sprite.index + 1) % texture_atlas.textures.len();
+                    crow.idle_frame_tick_counter = 0;
                 }
+            }
 
-                CrowState::Run => {
-                    if crow.idle_frame_tick_counter > crow.run_frame_tick_times[sprite.index] {
-                        let texture_atlas = texture_atlases.get(texture_atlas_handle).unwrap();
-                        sprite.index = (sprite.index + 1) % texture_atlas.textures.len();
-                        crow.idle_frame_tick_counter = 0;
-                    }
+            CrowState::Run => {
+                if crow.idle_frame_tick_counter > crow.run_frame_tick_times[sprite.index] {
+                    let texture_atlas = texture_atlases.get(texture_atlas_handle).unwrap();
+                    sprite.index = (sprite.index + 1) % texture_atlas.textures.len();
+                    crow.idle_frame_tick_counter = 0;
                 }
-                _ => {
-                    if crow.idle_frame_tick_counter > crow.fly_frame_tick_times[sprite.index] {
-                        let texture_atlas = texture_atlases.get(texture_atlas_handle).unwrap();
-                        sprite.index = (sprite.index + 1) % texture_atlas.textures.len();
-                        crow.idle_frame_tick_counter = 0;
-                    }
+            }
+            _ => {
+                if crow.idle_frame_tick_counter > crow.fly_frame_tick_times[sprite.index] {
+                    let texture_atlas = texture_atlases.get(texture_atlas_handle).unwrap();
+                    sprite.index = (sprite.index + 1) % texture_atlas.textures.len();
+                    crow.idle_frame_tick_counter = 0;
                 }
             }
         }
@@ -84,12 +131,18 @@ fn spawn_background(
     asset_server: Res<AssetServer>,
     mut texture_atlases: ResMut<Assets<TextureAtlas>>,
 ) {
-    let background_handle = asset_server.load("maptest.png");
-    commands.spawn_bundle(OrthographicCameraBundle::new_2d());
-    commands.spawn_bundle(SpriteBundle {
-        texture: background_handle,
-        ..Default::default()
-    });
+    commands
+        .spawn_bundle(OrthographicCameraBundle::new_2d())
+        .insert(BirdCamera {});
+    commands.spawn_bundle(UiCameraBundle::default());
+    let background_handle = asset_server.load("sky.png");
+    commands
+        .spawn_bundle(SpriteBundle {
+            texture: background_handle,
+            transform: Transform::from_scale(Vec3::new(10.0, 10.0, 0.0)),
+            ..Default::default()
+        })
+        .insert(Background {});
     // load sprites into resources
     let idle_handle = asset_server.load("crow.png");
     let idle_atlas = TextureAtlas::from_grid(idle_handle, Vec2::new(96.0, 96.0), 11, 1);
@@ -111,6 +164,20 @@ fn spawn_background(
 
     commands.insert_resource(sprites);
 
+    // spawn static entities
+    commands
+        .spawn_bundle(SpriteBundle {
+            texture: asset_server.load("brick.png"),
+            transform: Transform::from_xyz(200.0, 0.0, 0.0),
+            ..Default::default()
+        })
+        .insert(Collider {
+            width: 32.0,
+            height: 32.0,
+            collider_type: ColliderType::Surface,
+        });
+
+    // spawn the crow
     commands
         .spawn_bundle(SpriteSheetBundle {
             texture_atlas: crow_idle_handle,
@@ -125,62 +192,152 @@ fn spawn_background(
             fly_frame_tick_times: vec![1, 1, 1, 1, 1, 1, 1, 1, 1],
             run_frame_tick_times: vec![1, 1, 1, 1, 1, 1, 1, 1, 1],
             idle_frame_tick_counter: 0,
+            is_colliding: IsColliding::No,
         });
+
+    let font = asset_server.load("Inconsolata-Regular.ttf");
+
+    commands
+        .spawn_bundle(TextBundle {
+            style: Style {
+                align_self: AlignSelf::FlexEnd,
+                position_type: PositionType::Absolute,
+                position: Rect {
+                    bottom: Val::Px(5.0),
+                    left: Val::Px(15.0),
+                    ..Default::default()
+                },
+                size: Size {
+                    width: Val::Px(200.0),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            text: Text::with_section(
+                "a".to_string(),
+                TextStyle {
+                    font,
+                    font_size: 50.0,
+                    color: Color::WHITE,
+                },
+                Default::default(),
+            ),
+            ..Default::default()
+        })
+        .insert(DebugText);
 }
 
 fn crow_input(
     time: Res<Time>,
     sprites: Res<Sprites>,
     keyboard_input: Res<Input<KeyCode>>,
-    mut crow_transform: Query<(
+    mut camera_query: Query<(&mut Transform, &BirdCamera)>,
+    mut background_query: Query<(&mut Transform, &Background, Without<BirdCamera>)>,
+    mut crow_query: Query<(
         &mut Crow,
         &mut Transform,
+        Without<BirdCamera>,
+        Without<Background>,
         &mut Handle<TextureAtlas>,
         &mut TextureAtlasSprite,
     )>,
 ) {
-    for (mut crow, mut transform, mut crow_handle, mut sprite) in crow_transform.iter_mut() {
+    let (mut camera_transform, mut camera) = camera_query.single_mut();
+    let (mut background_transform, mut background, _) = background_query.single_mut();
+    let (mut crow, mut transform, _, _, mut crow_handle, mut sprite) = crow_query.single_mut();
+    if crow.is_colliding != IsColliding::Bottom {
         transform.translation.y += 1.0 * crow.acceleration * time.delta_seconds();
-        if keyboard_input.pressed(KeyCode::Space) {
-            crow.acceleration = 200.0;
-            if transform.translation.y == 0.0 {
-                transform.translation.y = 1.0;
-            }
-            if crow.crow_state != CrowState::Fly {
-                crow.crow_state = CrowState::Fly;
-                sprite.index = 0;
-                *crow_handle = sprites.crow_fly.clone();
-            }
+    } else {
+        if crow.crow_state != CrowState::Idle {
+            crow.crow_state = CrowState::Idle;
+            *crow_handle = sprites.crow_idle.clone();
+            sprite.index = 0;
         }
-        if keyboard_input.pressed(KeyCode::Left) {
-            transform.translation.x += -200.0 * time.delta_seconds();
-            sprite.flip_x = true;
-            if crow.crow_state == CrowState::Idle {
-                crow.crow_state = CrowState::Run;
+        crow.acceleration = 0.0;
+    }
+
+    if keyboard_input.pressed(KeyCode::Space) {
+        crow.acceleration = 200.0;
+        if transform.translation.y == 0.0 {
+            transform.translation.y = 1.0;
+        }
+        if crow.crow_state != CrowState::Fly {
+            crow.crow_state = CrowState::Fly;
+            sprite.index = 0;
+            *crow_handle = sprites.crow_fly.clone();
+        }
+    }
+    if keyboard_input.pressed(KeyCode::Left) && crow.is_colliding != IsColliding::Left {
+        transform.translation.x += -200.0 * time.delta_seconds();
+        sprite.flip_x = true;
+        if crow.crow_state == CrowState::Idle {
+            crow.crow_state = CrowState::Run;
+            sprite.index = 0;
+            *crow_handle = sprites.crow_run.clone();
+        }
+    } else if keyboard_input.pressed(KeyCode::Right) && crow.is_colliding != IsColliding::Right {
+        transform.translation.x += 200.0 * time.delta_seconds();
+        sprite.flip_x = false;
+        if crow.crow_state == CrowState::Idle {
+            crow.crow_state = CrowState::Run;
+            sprite.index = 0;
+            *crow_handle = sprites.crow_run.clone();
+        }
+    } else {
+        if transform.translation.y <= 0.0 {
+            if crow.crow_state != CrowState::Idle {
+                crow.crow_state = CrowState::Idle;
+                *crow_handle = sprites.crow_idle.clone();
                 sprite.index = 0;
-                *crow_handle = sprites.crow_run.clone();
             }
-        } else if keyboard_input.pressed(KeyCode::Right) {
-            transform.translation.x += 200.0 * time.delta_seconds();
-            sprite.flip_x = false;
-            if crow.crow_state == CrowState::Idle {
-                crow.crow_state = CrowState::Run;
-                sprite.index = 0;
-                *crow_handle = sprites.crow_run.clone();
+            crow.acceleration = 0.0;
+            transform.translation.y = 0.0;
+        }
+    }
+    if transform.translation.y > 0.0 {
+        crow.acceleration -= 5.0;
+    }
+    camera_transform.translation = transform.translation;
+    background_transform.translation =
+        Vec3::new(transform.translation.x, transform.translation.y, 0.0);
+}
+
+fn collision_check(
+    mut commands: Commands,
+    mut crow_query: Query<(&mut Crow, &Transform)>,
+    collider_query: Query<(&Collider, &Transform)>,
+) {
+    let (mut crow, crow_transform) = crow_query.single_mut();
+    for (collider, collider_transform) in collider_query.iter() {
+        let collision = collide(
+            collider_transform.translation,
+            Vec2::new(32.0, 32.0),
+            crow_transform.translation,
+            Vec2::new(60.0, 60.0),
+        );
+
+        if let Some(collision) = collision {
+            println!("collision!");
+
+            match collision {
+                Collision::Left => crow.is_colliding = IsColliding::Left,
+                Collision::Right => crow.is_colliding = IsColliding::Right,
+                Collision::Top => crow.is_colliding = IsColliding::Top,
+                Collision::Bottom => crow.is_colliding = IsColliding::Bottom,
             }
         } else {
-            if transform.translation.y <= 0.0 {
-                if crow.crow_state != CrowState::Idle {
-                    crow.crow_state = CrowState::Idle;
-                    *crow_handle = sprites.crow_idle.clone();
-                    sprite.index = 0;
-                }
-                crow.acceleration = 0.0;
-                transform.translation.y = 0.0;
-            }
+            crow.is_colliding = IsColliding::No
         }
-        if transform.translation.y > 0.0 {
-            crow.acceleration -= 5.0;
-        }
+    }
+}
+
+fn ui(
+    diagnostics: Res<Diagnostics>,
+    mut query: Query<&mut Text, With<DebugText>>,
+    mut crow_query: Query<&Transform, With<Crow>>,
+) {
+    let transform = crow_query.single_mut();
+    for mut text in query.iter_mut() {
+        text.sections[0].value = format!("{}", transform.scale);
     }
 }

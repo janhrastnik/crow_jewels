@@ -82,8 +82,8 @@ fn main() {
     App::new()
         .insert_resource(WindowDescriptor {
             title: "Crow Jewels".to_string(),
-            width: 400.,
-            height: 400.,
+            width: 800.,
+            height: 600.,
             mode: bevy::window::WindowMode::Windowed,
             ..Default::default()
         })
@@ -200,7 +200,7 @@ fn spawn_background(
     commands
         .spawn_bundle(SpriteBundle {
             texture: background_handle,
-            transform: Transform::from_scale(Vec3::new(10.0, 10.0, 0.0)),
+            transform: Transform::from_scale(Vec3::new(12.0, 12.0, 0.0)),
             ..Default::default()
         })
         .insert(Background {});
@@ -213,8 +213,8 @@ fn spawn_background(
     let run_atlas = TextureAtlas::from_grid(run_handle, Vec2::new(96.0, 96.0), 7, 1);
     let crow_run_handle = texture_atlases.add(run_atlas);
 
-    let takeoff_handle = asset_server.load("crow_takeoff.png");
-    let takeoff_atlas = TextureAtlas::from_grid(takeoff_handle, Vec2::new(67.0, 67.0), 6, 1);
+    let takeoff_handle = asset_server.load("crow_takeoff2x.png");
+    let takeoff_atlas = TextureAtlas::from_grid(takeoff_handle, Vec2::new(134.0, 134.0), 6, 1);
     let crow_takeoff_handle = texture_atlases.add(takeoff_atlas);
 
     let person_handle = asset_server.load("walking_stickman.png");
@@ -233,7 +233,7 @@ fn spawn_background(
     commands
         .spawn_bundle(SpriteBundle {
             texture: asset_server.load("brick.png"),
-            transform: Transform::from_xyz(100.0, 10.0, 1.0),
+            transform: Transform::from_xyz(100.0, 16.0, 1.0),
             ..Default::default()
         })
         .insert(Collider {
@@ -241,7 +241,68 @@ fn spawn_background(
             height: 32.0,
             collider_type: ColliderType::Surface,
         });
+    commands
+        .spawn_bundle(SpriteBundle {
+            texture: asset_server.load("brick.png"),
+            transform: Transform::from_xyz(0.0, 50.0, 1.0),
+            sprite: Sprite {
+                custom_size: Some(Vec2::new(100.0, 100.0)),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .insert(Collider {
+            width: 100.0,
+            height: 100.0,
+            collider_type: ColliderType::Surface,
+        });
+    commands
+        .spawn_bundle(SpriteBundle {
+            texture: asset_server.load("brick.png"),
+            transform: Transform::from_xyz(700.0, 50.0, 1.0),
+            sprite: Sprite {
+                custom_size: Some(Vec2::new(32.0, 100.0)),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .insert(Collider {
+            width: 32.0,
+            height: 100.0,
+            collider_type: ColliderType::Surface,
+        });
+    commands
+        .spawn_bundle(SpriteBundle {
+            texture: asset_server.load("vines.png"),
+            transform: Transform::from_xyz(-700.0, 50.0, 1.0),
+            sprite: Sprite {
+                custom_size: Some(Vec2::new(32.0, 100.0)),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .insert(Collider {
+            width: 32.0,
+            height: 100.0,
+            collider_type: ColliderType::Surface,
+        });
+    commands
+        .spawn_bundle(SpriteBundle {
+            texture: asset_server.load("vines.png"),
+            transform: Transform::from_xyz(-1150.0, 50.0, 1.0),
+            sprite: Sprite {
+                custom_size: Some(Vec2::new(32.0, 100.0)),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .insert(Collider {
+            width: 32.0,
+            height: 100.0,
+            collider_type: ColliderType::Surface,
+        });
 
+    // floor
     commands
         .spawn_bundle(SpriteBundle {
             texture: asset_server.load("dirtfloor.png"),
@@ -304,77 +365,32 @@ fn spawn_background(
         });
 
     // spawn people
-    commands
-        .spawn_bundle(SpriteSheetBundle {
-            texture_atlas: person_handle.clone(),
-            transform: Transform::from_xyz(750.0, 20.0, 1.0),
-            ..Default::default()
-        })
-        .insert(Collider {
-            width: 64.0,
-            height: 64.0,
-            collider_type: ColliderType::Person,
-        })
-        .insert(Person { frame_index: 0 })
-        .insert(AnimationTimer(Timer::from_seconds(0.1, true)));
-
-    commands
-        .spawn_bundle(SpriteSheetBundle {
-            texture_atlas: person_handle.clone(),
-            transform: Transform::from_xyz(-250.0, 20.0, 1.0),
-            ..Default::default()
-        })
-        .insert(Collider {
-            width: 64.0,
-            height: 64.0,
-            collider_type: ColliderType::Person,
-        })
-        .insert(Person { frame_index: 0 })
-        .insert(AnimationTimer(Timer::from_seconds(0.1, true)));
-    commands
-        .spawn_bundle(SpriteSheetBundle {
-            texture_atlas: person_handle.clone(),
-            transform: Transform::from_xyz(1250.0, 20.0, 1.0),
-            ..Default::default()
-        })
-        .insert(Collider {
-            width: 64.0,
-            height: 64.0,
-            collider_type: ColliderType::Person,
-        })
-        .insert(Person { frame_index: 0 })
-        .insert(AnimationTimer(Timer::from_seconds(0.1, true)));
-    commands
-        .spawn_bundle(SpriteSheetBundle {
-            texture_atlas: person_handle.clone(),
-            transform: Transform::from_xyz(250.0, 20.0, 1.0),
-            ..Default::default()
-        })
-        .insert(Collider {
-            width: 64.0,
-            height: 64.0,
-            collider_type: ColliderType::Person,
-        })
-        .insert(Person { frame_index: 0 })
-        .insert(AnimationTimer(Timer::from_seconds(0.1, true)));
-    commands
-        .spawn_bundle(SpriteSheetBundle {
-            texture_atlas: person_handle,
-            transform: Transform::from_xyz(-1250.0, 20.0, 1.0),
-            ..Default::default()
-        })
-        .insert(Collider {
-            width: 64.0,
-            height: 64.0,
-            collider_type: ColliderType::Person,
-        })
-        .insert(Person { frame_index: 0 })
-        .insert(AnimationTimer(Timer::from_seconds(0.1, true)));
+    for _ in 0..10 {
+        let mut rng = rand::thread_rng();
+        let mut num: f32 = rng.gen_range(300..1500) as f32;
+        let sign: bool = rng.gen_bool(0.5);
+        if sign {
+            num = num * (-1.0);
+        }
+        commands
+            .spawn_bundle(SpriteSheetBundle {
+                texture_atlas: person_handle.clone(),
+                transform: Transform::from_xyz(num, 20.0, 1.0),
+                ..Default::default()
+            })
+            .insert(Collider {
+                width: 64.0,
+                height: 64.0,
+                collider_type: ColliderType::Person,
+            })
+            .insert(Person { frame_index: 0 })
+            .insert(AnimationTimer(Timer::from_seconds(0.1, true)));
+    }
     // spawn the crow
     commands
         .spawn_bundle(SpriteSheetBundle {
             texture_atlas: crow_idle_handle,
-            transform: Transform::from_xyz(0.0, 100.0, 1.0),
+            transform: Transform::from_xyz(0.0, 150.0, 1.0),
             ..Default::default()
         })
         .insert(AnimationTimer(Timer::from_seconds(0.1, true)))
@@ -391,57 +407,15 @@ fn spawn_background(
         });
 
     let font = asset_server.load("Inconsolata-Regular.ttf");
-
-    commands
-        .spawn_bundle(TextBundle {
-            style: Style {
-                align_self: AlignSelf::FlexEnd,
-                position_type: PositionType::Absolute,
-                position: Rect {
-                    bottom: Val::Px(5.0),
-                    left: Val::Px(15.0),
-                    ..Default::default()
-                },
-                size: Size {
-                    width: Val::Px(200.0),
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-            text: Text::with_section(
-                "Score".to_string(),
-                TextStyle {
-                    font: font.clone(),
-                    font_size: 50.0,
-                    color: Color::WHITE,
-                },
-                Default::default(),
-            ),
-            ..Default::default()
-        })
-        .insert(DebugText);
-
-    commands.spawn_bundle(TextBundle {
-        style: Style {
-            align_self: AlignSelf::FlexEnd,
-            position_type: PositionType::Absolute,
-            position: Rect {
-                top: Val::Px(5.0),
-                right: Val::Px(15.0),
-                ..Default::default()
-            },
-            size: Size {
-                width: Val::Px(200.0),
-                ..Default::default()
-            },
-            ..Default::default()
-        },
+    // text, ui
+    commands.spawn_bundle(Text2dBundle {
+        transform: Transform::from_xyz(-150.0, 200.0, 1.0),
         text: Text::with_section(
             "Steal the jewelry!".to_string(),
             TextStyle {
                 font: font.clone(),
-                font_size: 50.0,
-                color: Color::WHITE,
+                font_size: 40.0,
+                color: Color::BLACK,
             },
             Default::default(),
         ),
@@ -468,7 +442,7 @@ fn spawn_background(
                 TextStyle {
                     font,
                     font_size: 50.0,
-                    color: Color::WHITE,
+                    color: Color::BLACK,
                 },
                 Default::default(),
             ),
@@ -557,12 +531,14 @@ fn move_people(
 ) {
     let (_, crow_transform, _) = crow_query.single_mut();
     for (_, mut person_transform, mut sprite) in people_query.iter_mut() {
-        if crow_transform.translation.x > person_transform.translation.x {
-            sprite.flip_x = false;
-            person_transform.translation.x += 20.0 * time.delta_seconds();
-        } else {
-            sprite.flip_x = true;
-            person_transform.translation.x -= 20.0 * time.delta_seconds();
+        if (crow_transform.translation.x - person_transform.translation.x).abs() < 350.0 {
+            if crow_transform.translation.x > person_transform.translation.x {
+                sprite.flip_x = false;
+                person_transform.translation.x += 25.0 * time.delta_seconds();
+            } else {
+                sprite.flip_x = true;
+                person_transform.translation.x -= 25.0 * time.delta_seconds();
+            }
         }
     }
 }
@@ -605,15 +581,8 @@ fn collision_check(
     }
 }
 
-fn ui(
-    mut query: Query<&mut Text, With<DebugText>>,
-    mut score_query: Query<(&mut Text, With<ScoreText>, Without<DebugText>)>,
-    mut crow_query: Query<(&Transform, &Crow)>,
-) {
-    let (transform, crow) = crow_query.single_mut();
-    let (mut score, _, _) = score_query.single_mut();
+fn ui(mut score_query: Query<(&mut Text, With<ScoreText>)>, mut crow_query: Query<&Crow>) {
+    let crow = crow_query.single_mut();
+    let (mut score, _) = score_query.single_mut();
     score.sections[0].value = format!("Score: {}", crow.score);
-    for mut text in query.iter_mut() {
-        text.sections[0].value = format!("{}", transform.scale);
-    }
 }

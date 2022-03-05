@@ -1,6 +1,7 @@
 use bevy::core::FixedTimestep;
 use bevy::prelude::*;
 use bevy::sprite::collide_aabb::{collide, Collision};
+use bevy_kira_audio::{Audio, AudioChannel, AudioPlugin};
 use rand::Rng;
 
 #[derive(Component)]
@@ -14,6 +15,7 @@ struct Crow {
     is_colliding_vert: IsColliding,
     is_colliding_hori: IsColliding,
     score: usize,
+    wing_audio_channel: AudioChannel,
 }
 
 #[derive(Component)]
@@ -88,6 +90,7 @@ fn main() {
             ..Default::default()
         })
         .add_plugins(DefaultPlugins)
+        .add_plugin(AudioPlugin)
         .add_startup_system(spawn_background)
         .add_system(ui)
         .add_system_set(
@@ -191,6 +194,7 @@ fn spawn_background(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut texture_atlases: ResMut<Assets<TextureAtlas>>,
+    audio: Res<Audio>,
 ) {
     commands
         .spawn_bundle(OrthographicCameraBundle::new_2d())
@@ -404,6 +408,7 @@ fn spawn_background(
             is_colliding_vert: IsColliding::No,
             is_colliding_hori: IsColliding::No,
             score: 0,
+            wing_audio_channel: AudioChannel::new("wings".to_owned()),
         });
 
     let font = asset_server.load("Inconsolata-Regular.ttf");
@@ -449,6 +454,8 @@ fn spawn_background(
             ..Default::default()
         })
         .insert(ScoreText);
+    audio.play_looped(asset_server.load("AcesHighKevinMacleod.ogg"));
+    audio.set_volume(0.3);
 }
 
 #[allow(clippy::type_complexity)]
@@ -466,6 +473,8 @@ fn crow_input(
         &mut Handle<TextureAtlas>,
         &mut TextureAtlasSprite,
     )>,
+    audio: Res<Audio>,
+    asset_server: Res<AssetServer>,
 ) {
     let (mut camera_transform, _) = camera_query.single_mut();
     let (mut background_transform, _, _) = background_query.single_mut();
@@ -483,6 +492,7 @@ fn crow_input(
 
     if keyboard_input.pressed(KeyCode::Space) {
         crow.acceleration = 200.0;
+        audio.play_in_channel(asset_server.load("wingflap.wav"), &crow.wing_audio_channel);
         transform.translation.y += 10.0;
         if crow.crow_state != CrowState::Fly {
             crow.crow_state = CrowState::Fly;

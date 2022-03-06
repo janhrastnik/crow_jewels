@@ -30,7 +30,5 @@ default-features = false
 # enable the features you care about
 features = [
   "wav",
-  "flac",
-  "mp3",
   "ogg",
 ]

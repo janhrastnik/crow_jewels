@@ -1,4 +1,5 @@
 use bevy::core::FixedTimestep;
+use bevy::ecs::schedule::ShouldRun;
 use bevy::prelude::*;
 use bevy::sprite::collide_aabb::{collide, Collision};
 use bevy_kira_audio::{Audio, AudioChannel, AudioPlugin};
@@ -16,6 +17,7 @@ struct Crow {
     is_colliding_hori: IsColliding,
     score: usize,
     wing_audio_channel: AudioChannel,
+    is_dead: bool,
 }
 
 #[derive(Component)]
@@ -33,6 +35,9 @@ enum CrowState {
     Run,
     Fly,
 }
+
+#[derive(Component)]
+struct GameOverUI;
 
 #[derive(Component)]
 struct DebugText;
@@ -80,6 +85,22 @@ struct Sprites {
     crow_takeoff: Handle<TextureAtlas>,
 }
 
+fn game_not_over(crow_query: Query<&Crow>) -> ShouldRun {
+    let crow = crow_query.single();
+    if crow.is_dead {
+        return ShouldRun::No;
+    }
+    ShouldRun::Yes
+}
+
+fn game_is_over(crow_query: Query<&Crow>) -> ShouldRun {
+    let crow = crow_query.single();
+    if crow.is_dead {
+        return ShouldRun::Yes;
+    }
+    ShouldRun::No
+}
+
 fn main() {
     App::new()
         .insert_resource(WindowDescriptor {
@@ -92,20 +113,26 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_plugin(AudioPlugin)
         .add_startup_system(spawn_background)
-        .add_system(ui)
         .add_system_set(
             SystemSet::new()
                 .with_run_criteria(FixedTimestep::step(TIME_STEP as f64))
+                .with_run_criteria(game_not_over)
                 .with_system(crow_input)
                 .with_system(animate_crow)
                 .with_system(collision_check)
                 .with_system(move_people)
-                .with_system(animate_people),
+                .with_system(animate_people)
+                .with_system(ui),
         )
         .add_system_set(
             SystemSet::new()
                 .with_run_criteria(FixedTimestep::step(SPAWN_STEP as f64))
                 .with_system(spawn_jewel),
+        )
+        .add_system_set(
+            SystemSet::new()
+                .with_run_criteria(game_is_over)
+                .with_system(gameover_screen),
         )
         .run();
 }
@@ -409,6 +436,7 @@ fn spawn_background(
             is_colliding_hori: IsColliding::No,
             score: 0,
             wing_audio_channel: AudioChannel::new("wings".to_owned()),
+            is_dead: false,
         });
 
     let font = asset_server.load("Inconsolata-Regular.ttf");
@@ -557,8 +585,11 @@ fn collision_check(
     mut commands: Commands,
     mut crow_query: Query<(&mut Crow, &Transform)>,
     collider_query: Query<(Entity, &Collider, &Transform)>,
+    mut score_query: Query<(Entity, &mut Text, With<ScoreText>)>,
+    asset_server: Res<AssetServer>,
 ) {
     let (mut crow, crow_transform) = crow_query.single_mut();
+    let (score_entity, _, _) = score_query.single_mut();
     let mut found_collision = false;
     for (entity, collider, collider_transform) in collider_query.iter() {
         let collision = collide(
@@ -575,7 +606,39 @@ fn collision_check(
                 crow.score += 1;
                 commands.entity(entity).despawn();
             } else if collider.collider_type == ColliderType::Person {
-                std::process::exit(0);
+                commands
+                    .spawn_bundle(NodeBundle {
+                        style: Style {
+                            size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
+                            justify_content: JustifyContent::SpaceBetween,
+                            ..Default::default()
+                        },
+                        color: Color::RED.into(),
+                        ..Default::default()
+                    })
+                    .insert(GameOverUI {});
+                commands.entity(score_entity).despawn();
+                crow.is_dead = true;
+                let font = asset_server.load("Inconsolata-Regular.ttf");
+                commands
+                    .spawn_bundle(TextBundle {
+                        style: Style {
+                            align_self: AlignSelf::Center,
+                            position_type: PositionType::Absolute,
+                            ..Default::default()
+                        },
+                        text: Text::with_section(
+                            "        Game Over\n    Press [Space] to restart".to_string(),
+                            TextStyle {
+                                font,
+                                font_size: 30.0,
+                                color: Color::BLACK,
+                            },
+                            Default::default(),
+                        ),
+                        ..Default::default()
+                    })
+                    .insert(GameOverUI {});
             }
 
             match collision {
@@ -595,4 +658,51 @@ fn ui(mut score_query: Query<(&mut Text, With<ScoreText>)>, mut crow_query: Quer
     let crow = crow_query.single_mut();
     let (mut score, _) = score_query.single_mut();
     score.sections[0].value = format!("Score: {}", crow.score);
+}
+
+fn gameover_screen(
+    mut commands: Commands,
+    keyboard_input: Res<Input<KeyCode>>,
+    mut gameover_ui_query: Query<(Entity, &GameOverUI)>,
+    mut crow_query: Query<(&mut Crow, &mut Transform)>,
+    asset_server: Res<AssetServer>,
+) {
+    if keyboard_input.pressed(KeyCode::Space) {
+        for (entity, _) in gameover_ui_query.iter_mut() {
+            commands.entity(entity).despawn();
+        }
+        let (mut crow, mut crow_transform) = crow_query.single_mut();
+        crow.is_dead = false;
+        crow.score = 0;
+        crow_transform.translation = Vec3::new(0.0, 150.0, 1.0);
+        let font = asset_server.load("Inconsolata-Regular.ttf");
+        commands
+            .spawn_bundle(TextBundle {
+                style: Style {
+                    align_self: AlignSelf::FlexEnd,
+                    position_type: PositionType::Absolute,
+                    position: Rect {
+                        top: Val::Px(5.0),
+                        left: Val::Px(15.0),
+                        ..Default::default()
+                    },
+                    size: Size {
+                        width: Val::Px(200.0),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+                text: Text::with_section(
+                    "Score: 0".to_string(),
+                    TextStyle {
+                        font,
+                        font_size: 50.0,
+                        color: Color::BLACK,
+                    },
+                    Default::default(),
+                ),
+                ..Default::default()
+            })
+            .insert(ScoreText);
+    }
 }

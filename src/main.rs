@@ -401,7 +401,7 @@ fn spawn_background(
         let mut num: f32 = rng.gen_range(300..1500) as f32;
         let sign: bool = rng.gen_bool(0.5);
         if sign {
-            num *= (-1.0);
+            num *= -1.0;
         }
         commands
             .spawn_bundle(SpriteSheetBundle {

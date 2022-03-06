@@ -231,7 +231,10 @@ fn spawn_background(
     commands
         .spawn_bundle(SpriteBundle {
             texture: background_handle,
-            transform: Transform::from_scale(Vec3::new(12.0, 12.0, 0.0)),
+            sprite: Sprite {
+                custom_size: Some(Vec2::new(800.0, 600.0)),
+                ..Default::default()
+            },
             ..Default::default()
         })
         .insert(Background {});
